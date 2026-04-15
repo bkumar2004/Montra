@@ -56,9 +56,9 @@ export default function SettingsScreen({ theme, toggleTheme, wallets, onRefresh 
           background: 'linear-gradient(135deg, var(--accent), var(--accent-blue))',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 32, color: '#fff', fontWeight: 800,
-        }}>B</div>
+        }}>U</div>
         <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-          Bhavishay
+          USER
         </div>
         <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Prop Trader & Developer</div>
       </div>
