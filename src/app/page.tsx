@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DashboardData, Transaction, Category, Wallet, Budget, AnalyticsData, ActiveTab } from '@/lib/types';
+import * as store from '@/lib/store';
 import DashboardScreen from '@/components/DashboardScreen';
 import TransactionsScreen from '@/components/TransactionsScreen';
 import AddTransactionModal from '@/components/AddTransactionModal';
@@ -16,6 +17,7 @@ export default function Home() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [ready, setReady] = useState(false);
 
   // Data
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
@@ -32,8 +34,11 @@ export default function Home() {
     type: 'all', category: '', search: ''
   });
 
-  // Theme
+  // Initialize store & theme
   useEffect(() => {
+    store.initializeStore();
+    setReady(true);
+
     const saved = localStorage.getItem('montra-theme');
     if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setTheme('dark');
@@ -48,170 +53,99 @@ export default function Home() {
     localStorage.setItem('montra-theme', next);
   };
 
-  // Fetch data
-  const fetchDashboard = useCallback(async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const data = await res.json();
-      setDashboard(data);
-    } catch (e) {
-      console.error('Failed to fetch dashboard', e);
-    }
-  }, []);
-
-  const fetchTransactions = useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (txFilter.type !== 'all') params.set('type', txFilter.type);
-      if (txFilter.category) params.set('category', txFilter.category);
-      if (txFilter.search) params.set('search', txFilter.search);
-      params.set('limit', '100');
-
-      const res = await fetch(`/api/transactions?${params}`);
-      const data = await res.json();
-      setTransactions(data.transactions || []);
-      setTotalTransactions(data.total || 0);
-    } catch (e) {
-      console.error('Failed to fetch transactions', e);
-    }
-  }, [txFilter]);
-
-  const fetchCategories = useCallback(async () => {
-    try {
-      const res = await fetch('/api/categories');
-      const data = await res.json();
-      setCategories(data);
-    } catch (e) {
-      console.error('Failed to fetch categories', e);
-    }
-  }, []);
-
-  const fetchWallets = useCallback(async () => {
-    try {
-      const res = await fetch('/api/wallets');
-      const data = await res.json();
-      setWallets(data);
-    } catch (e) {
-      console.error('Failed to fetch wallets', e);
-    }
-  }, []);
-
-  const fetchBudgets = useCallback(async () => {
-    try {
-      const res = await fetch('/api/budgets');
-      const data = await res.json();
-      setBudgets(data);
-    } catch (e) {
-      console.error('Failed to fetch budgets', e);
-    }
-  }, []);
-
-  const fetchAnalytics = useCallback(async () => {
-    try {
-      const res = await fetch('/api/analytics');
-      const data = await res.json();
-      setAnalytics(data);
-    } catch (e) {
-      console.error('Failed to fetch analytics', e);
-    }
-  }, []);
-
-  const refreshAll = useCallback(async () => {
+  // Refresh all data from localStorage
+  const refreshAll = useCallback(() => {
+    if (!ready) return;
     setLoading(true);
-    await Promise.all([
-      fetchDashboard(),
-      fetchTransactions(),
-      fetchCategories(),
-      fetchWallets(),
-      fetchBudgets(),
-      fetchAnalytics(),
-    ]);
+
+    setDashboard(store.getDashboardData());
+    setCategories(store.getCategories());
+    setWallets(store.getWallets());
+    setBudgets(store.getBudgets());
+    setAnalytics(store.getAnalyticsData());
+
+    const result = store.getTransactions(txFilter);
+    setTransactions(result.transactions);
+    setTotalTransactions(result.total);
+
     setLoading(false);
-  }, [fetchDashboard, fetchTransactions, fetchCategories, fetchWallets, fetchBudgets, fetchAnalytics]);
+  }, [ready, txFilter]);
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
-
-  useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const handleAddTransaction = async (data: {
+  const handleAddTransaction = (data: {
     type: string; amount: number; category_id: string;
     wallet_id: string; note: string; date: string;
   }) => {
     try {
-      const res = await fetch('/api/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Failed to add transaction');
+      store.addTransaction(data);
       setShowAddModal(false);
-      showToast('Transaction added successfully!');
+      showToast('Transaction added!');
       refreshAll();
-    } catch {
+    } catch (err) {
+      console.error(err);
       showToast('Failed to add transaction', 'error');
     }
   };
 
-  const handleDeleteTransaction = async (id: string) => {
+  const handleDeleteTransaction = (id: string) => {
     try {
-      const res = await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
+      store.deleteTransaction(id);
       showToast('Transaction deleted');
       refreshAll();
-    } catch {
+    } catch (err) {
+      console.error(err);
       showToast('Failed to delete transaction', 'error');
     }
   };
 
-  const handleAddBudget = async (data: { category_id: string; amount: number; period: string }) => {
+  const handleAddBudget = (data: { category_id: string; amount: number; period: string }) => {
     try {
-      const res = await fetch('/api/budgets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Failed to create budget');
+      store.addBudget(data);
       showToast('Budget created!');
-      fetchBudgets();
-    } catch {
+      refreshAll();
+    } catch (err) {
+      console.error(err);
       showToast('Failed to create budget', 'error');
     }
   };
 
-  const handleDeleteBudget = async (id: string) => {
+  const handleDeleteBudget = (id: string) => {
     try {
-      await fetch(`/api/budgets?id=${id}`, { method: 'DELETE' });
+      store.deleteBudget(id);
       showToast('Budget removed');
-      fetchBudgets();
-    } catch {
+      refreshAll();
+    } catch (err) {
+      console.error(err);
       showToast('Failed to remove budget', 'error');
     }
   };
 
-  const handleAddWallet = async (data: { name: string; type: string; balance: number; icon: string; color: string }) => {
+  const handleAddWallet = (data: { name: string; type: string; balance: number; icon: string; color: string }) => {
     try {
-      const res = await fetch('/api/wallets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error('Failed to create wallet');
+      store.addWallet(data);
       showToast('Wallet created!');
-      fetchWallets();
-      fetchDashboard();
-    } catch {
+      refreshAll();
+    } catch (err) {
+      console.error(err);
       showToast('Failed to create wallet', 'error');
     }
   };
+
+  if (!ready) {
+    return (
+      <div className="app-shell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh' }}>
+        <div className="loading-spinner"><div className="spinner" /></div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -244,7 +178,7 @@ export default function Home() {
       )}
 
       {activeTab === 'trading' && (
-        <PropFirmsScreen showToast={showToast} />
+        <PropFirmsScreen showToast={showToast} onRefresh={refreshAll} />
       )}
 
       {activeTab === 'analytics' && (
@@ -259,7 +193,7 @@ export default function Home() {
           theme={theme}
           toggleTheme={toggleTheme}
           wallets={wallets}
-          onAddWallet={handleAddWallet}
+          onRefresh={refreshAll}
         />
       )}
 

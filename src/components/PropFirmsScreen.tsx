@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PropFirm, PropFirmTransaction } from '@/lib/types';
+import * as store from '@/lib/store';
 
 interface PropFirmsData {
   firms: PropFirm[];
@@ -14,14 +15,15 @@ interface PropFirmsData {
     passedFirms: number;
     failedFirms: number;
   };
-  transactions: PropFirmTransaction[];
+  transactions: (PropFirmTransaction & { firm_name?: string })[];
 }
 
 interface PropFirmsScreenProps {
   showToast: (msg: string, type: 'success' | 'error') => void;
+  onRefresh?: () => void;
 }
 
-export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
+export default function PropFirmsScreen({ showToast, onRefresh }: PropFirmsScreenProps) {
   const [data, setData] = useState<PropFirmsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddFirm, setShowAddFirm] = useState(false);
@@ -29,93 +31,58 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
   const [expandedFirm, setExpandedFirm] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<'overview' | 'firms' | 'history'>('overview');
 
-  // Form states
   const [firmForm, setFirmForm] = useState({ name: '', status: 'active', account_size: '', challenge_type: '', notes: '' });
   const [txForm, setTxForm] = useState({ firm_id: '', type: 'spend', amount: '', note: '', date: new Date().toISOString().split('T')[0] });
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
   };
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch('/api/propfirms');
-      const json = await res.json();
-      setData(json);
-    } catch (e) {
-      console.error('Failed to fetch prop firms', e);
-    } finally {
-      setLoading(false);
-    }
+  const fetchData = useCallback(() => {
+    setData(store.getPropFirmsData());
+    setLoading(false);
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleAddFirm = async () => {
+  const handleAddFirm = () => {
     if (!firmForm.name) return;
-    try {
-      await fetch('/api/propfirms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_firm', ...firmForm }),
-      });
-      showToast('Firm added!', 'success');
-      setFirmForm({ name: '', status: 'active', account_size: '', challenge_type: '', notes: '' });
-      setShowAddFirm(false);
-      fetchData();
-    } catch { showToast('Failed to add firm', 'error'); }
+    store.addPropFirm(firmForm);
+    showToast('Firm added!', 'success');
+    setFirmForm({ name: '', status: 'active', account_size: '', challenge_type: '', notes: '' });
+    setShowAddFirm(false);
+    fetchData();
   };
 
-  const handleAddTransaction = async () => {
+  const handleAddTransaction = () => {
     if (!txForm.firm_id || !txForm.amount) return;
-    try {
-      await fetch('/api/propfirms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_transaction', ...txForm, amount: parseFloat(txForm.amount) }),
-      });
-      showToast(txForm.type === 'spend' ? 'Spend recorded!' : 'Payout recorded!', 'success');
-      setTxForm({ firm_id: '', type: 'spend', amount: '', note: '', date: new Date().toISOString().split('T')[0] });
-      setShowAddTx(false);
-      fetchData();
-    } catch { showToast('Failed to add transaction', 'error'); }
+    store.addPropFirmTransaction({ ...txForm, amount: parseFloat(txForm.amount) });
+    showToast(txForm.type === 'spend' ? 'Spend recorded!' : 'Payout recorded!', 'success');
+    setTxForm({ firm_id: '', type: 'spend', amount: '', note: '', date: new Date().toISOString().split('T')[0] });
+    setShowAddTx(false);
+    fetchData();
+    onRefresh?.();
   };
 
-  const handleDeleteFirm = async (firmId: string) => {
-    try {
-      await fetch('/api/propfirms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_firm', firm_id: firmId }),
-      });
-      showToast('Firm deleted', 'success');
-      setExpandedFirm(null);
-      fetchData();
-    } catch { showToast('Failed to delete', 'error'); }
+  const handleDeleteFirm = (firmId: string) => {
+    store.deletePropFirm(firmId);
+    showToast('Firm deleted', 'success');
+    setExpandedFirm(null);
+    fetchData();
+    onRefresh?.();
   };
 
-  const handleDeleteTx = async (txId: string) => {
-    try {
-      await fetch('/api/propfirms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_transaction', transaction_id: txId }),
-      });
-      showToast('Transaction deleted', 'success');
-      fetchData();
-    } catch { showToast('Failed to delete', 'error'); }
+  const handleDeleteTx = (txId: string) => {
+    store.deletePropFirmTransaction(txId);
+    showToast('Transaction deleted', 'success');
+    fetchData();
+    onRefresh?.();
   };
 
-  const handleUpdateStatus = async (firmId: string, status: string) => {
-    try {
-      await fetch('/api/propfirms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_firm_status', firm_id: firmId, status }),
-      });
-      showToast('Status updated', 'success');
-      fetchData();
-    } catch { showToast('Failed to update', 'error'); }
+  const handleUpdateStatus = (firmId: string, status: string) => {
+    store.updatePropFirmStatus(firmId, status);
+    showToast('Status updated', 'success');
+    fetchData();
   };
 
   const getStatusColor = (status: string) => {
@@ -174,7 +141,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
       {/* ====== OVERVIEW ====== */}
       {activeView === 'overview' && s && (
         <>
-          {/* Net P&L Card */}
           <div className="spending-card" style={{ textAlign: 'center' }}>
             <div className="spending-label">Net P&L</div>
             <div className="spending-amount" style={{ color: s.netPnL >= 0 ? 'var(--accent-green)' : 'var(--accent-red)', marginBottom: 8 }}>
@@ -185,7 +151,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </div>
           </div>
 
-          {/* Spend vs Payout */}
           <div className="summary-row">
             <div className="summary-widget">
               <div className="label">Total Spent</div>
@@ -197,7 +162,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </div>
           </div>
 
-          {/* Stats */}
           <div className="analytics-stat-row">
             <div className="analytics-stat">
               <div className="stat-value">{s.totalFirms}</div>
@@ -213,7 +177,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 24 }}>
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { setShowAddFirm(true); setActiveView('firms'); }}>
               + Add Firm
@@ -223,7 +186,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </button>
           </div>
 
-          {/* Firm Cards Preview */}
           {data?.firms.map(firm => (
             <div className="wallet-card" key={firm.id} onClick={() => { setExpandedFirm(firm.id); setActiveView('firms'); }}>
               <div className="wallet-icon" style={{ background: getStatusColor(firm.status) + '18' }}>
@@ -257,12 +219,11 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </button>
           </div>
 
-          {/* Add Firm Form */}
           {showAddFirm && (
             <div className="spending-card" style={{ marginBottom: 16, animation: 'scaleIn 0.2s ease' }}>
               <div className="form-group">
                 <label className="form-label">Firm Name</label>
-                <input className="form-input" placeholder="e.g. FTMO, MyFundedFX, The5ers..."
+                <input className="form-input" placeholder="e.g. Lucid, MFFU, Tradeify..."
                   value={firmForm.name} onChange={e => setFirmForm({ ...firmForm, name: e.target.value })} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -276,11 +237,9 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
                   <select className="form-select" value={firmForm.challenge_type}
                     onChange={e => setFirmForm({ ...firmForm, challenge_type: e.target.value })}>
                     <option value="">Select</option>
-                    <option value="Challenge">Challenge</option>
-                    <option value="Evaluation">Evaluation</option>
+                    <option value="Challenge">Eval</option>
+                    <option value="Evaluation">Funded</option>
                     <option value="Instant">Instant Funding</option>
-                    <option value="One-Step">One-Step</option>
-                    <option value="Two-Step">Two-Step</option>
                   </select>
                 </div>
               </div>
@@ -303,14 +262,11 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </div>
           )}
 
-          {/* Firm Cards */}
           {data?.firms.map(firm => (
             <div key={firm.id} style={{ marginBottom: 14 }}>
               <div className="budget-card" style={{ marginBottom: 0 }}>
                 <div className="budget-header">
-                  <div className="budget-title">
-                    {getStatusIcon(firm.status)} {firm.name}
-                  </div>
+                  <div className="budget-title">{getStatusIcon(firm.status)} {firm.name}</div>
                   <span className="budget-period" style={{ color: getStatusColor(firm.status), background: getStatusColor(firm.status) + '15' }}>
                     {firm.status}
                   </span>
@@ -324,9 +280,7 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
                 )}
 
                 {firm.notes && (
-                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 12, fontStyle: 'italic' }}>
-                    {firm.notes}
-                  </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 12, fontStyle: 'italic' }}>{firm.notes}</div>
                 )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -373,7 +327,7 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             <div className="empty-state">
               <div className="emoji">📈</div>
               <div className="title">No prop firms yet</div>
-              <div className="subtitle">Add your first prop firm to start tracking costs and payouts</div>
+              <div className="subtitle">Add your first prop firm to start tracking</div>
             </div>
           )}
         </>
@@ -389,7 +343,6 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </button>
           </div>
 
-          {/* Add Transaction Form */}
           {showAddTx && (
             <div className="spending-card" style={{ marginBottom: 16, animation: 'scaleIn 0.2s ease' }}>
               <div className="type-toggle" style={{ marginBottom: 16 }}>
@@ -413,7 +366,7 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Amount (₹)</label>
+                <label className="form-label">Amount ($)</label>
                 <input className="form-input" type="number" placeholder="0"
                   value={txForm.amount} onChange={e => setTxForm({ ...txForm, amount: e.target.value })} />
               </div>
@@ -434,10 +387,8 @@ export default function PropFirmsScreen({ showToast }: PropFirmsScreenProps) {
             </div>
           )}
 
-          {/* Transaction List */}
           {data?.transactions.map(tx => (
-            <div className="transaction-item" key={tx.id} onClick={() => handleDeleteTx(tx.id)}
-              style={{ cursor: 'pointer' }}>
+            <div className="transaction-item" key={tx.id} onClick={() => handleDeleteTx(tx.id)}>
               <div className="transaction-icon" style={{ background: tx.type === 'payout' ? 'rgba(52,199,89,0.12)' : 'rgba(255,59,48,0.12)' }}>
                 {tx.type === 'payout' ? '💰' : '💸'}
               </div>

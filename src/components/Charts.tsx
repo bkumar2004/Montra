@@ -59,7 +59,7 @@ export function WeeklyBarChart({ labels, data, darkMode }: BarChartProps) {
             padding: 10,
             displayColors: false,
             callbacks: {
-              label: (ctx) => `₹${ctx.parsed.y.toFixed(2)}`,
+              label: (ctx) => `₹${(ctx.parsed.y ?? 0).toFixed(2)}`,
             },
           },
         },
@@ -242,7 +242,7 @@ export function TrendLineChart({ labels, datasets, darkMode }: LineChartProps) {
             mode: 'index',
             intersect: false,
             callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ₹${ctx.parsed.y.toFixed(2)}`,
+              label: (ctx) => `${ctx.dataset.label}: ₹${(ctx.parsed.y ?? 0).toFixed(2)}`,
             },
           },
         },

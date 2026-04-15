@@ -10,7 +10,7 @@ export interface Wallet {
   id: string;
   user_id: string;
   name: string;
-  type: 'cash' | 'bank' | 'crypto' | 'savings';
+  type: 'cash' | 'bank' | 'crypto' | 'savings' | 'upi' | 'trading';
   balance: number;
   currency: string;
   icon: string;
